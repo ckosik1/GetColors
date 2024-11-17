@@ -43,7 +43,7 @@ export default async function handler(req, res) {
         let colorList = new Set();
         let variableDefinitions = {};
 
-        // Function to check if a color is valid (not transparent, inherit, or low opacity)
+        // Check if a color is valid (not transparent, inherit, or low opacity)
         const isValidColor = (color) => {
             if (color === 'transparent' || color === 'inherit') return false;
             if (color.startsWith('rgba')) {
@@ -53,31 +53,26 @@ export default async function handler(req, res) {
             return true;
         };
 
-        // Function to calculate luminance of a color
+        // Calculate luminance of a color
         const luminance = (r, g, b) => {
-            const a = [r, g, b].map(function (x) {
+            const a = [r, g, b].map(x => {
                 x = x / 255;
                 return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
             });
             return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
         };
 
-        // Convert color to RGB and calculate luminance
-        const getRgbFromColor = (color) => {
+        // Parse RGB from color string and calculate luminance
+        const getLuminanceFromColor = (color) => {
             const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
             if (rgba) {
-                return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
+                const r = parseInt(rgba[1]), g = parseInt(rgba[2]), b = parseInt(rgba[3]);
+                return luminance(r, g, b);
             }
             return null;
         };
 
-        // Function to check if an element is visible (not display:none or visibility:hidden)
-        const isElementVisible = (element) => {
-            const style = window.getComputedStyle(element);
-            return style.display !== 'none' && style.visibility !== 'hidden';
-        };
-
-        // Function to resolve CSS variables in a color string
+        // Resolve CSS variables in a color string
         const resolveCssVariables = (color, variables) => {
             return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
                 return variables[variableName] || match;
@@ -103,14 +98,14 @@ export default async function handler(req, res) {
                 }
             });
 
-            // Extract color-related properties from CSS rules
+            // Extract color properties from CSS rules
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property === 'color' || declaration.property === 'background-color') {
                             let color = declaration.value;
 
-                            // Replace any variables in the color value
+                            // Replace variables in the color value
                             color = resolveCssVariables(color, variableDefinitions);
 
                             if (isValidColor(color)) {
@@ -122,13 +117,11 @@ export default async function handler(req, res) {
             });
         }
 
-        // Sort colors by luminance (lightest to darkest)
+        // Sort colors by luminance from lightest to darkest
         const sortedColors = Array.from(colorList).sort((a, b) => {
-            const rgbA = getRgbFromColor(a);
-            const rgbB = getRgbFromColor(b);
-            if (!rgbA || !rgbB) return 0; // If color isn't in rgb, don't sort
-            const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
-            const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
+            const luminanceA = getLuminanceFromColor(a);
+            const luminanceB = getLuminanceFromColor(b);
+            if (luminanceA === null || luminanceB === null) return 0;
             return luminanceA - luminanceB; // Sort lightest to darkest
         });
 
