@@ -1,10 +1,9 @@
-// api/getColors.js
 import fetch from 'node-fetch';
 import css from 'css';
 
 export default async function handler(req, res) {
-    // CORS headers to allow requests from Webflow
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Replace with your Webflow domain
+    // Allow any origin for CORS (testing purposes; narrow down to specific domain later)
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -40,7 +39,8 @@ export default async function handler(req, res) {
 
         // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
-            const cssResponse = await fetch(cssUrl.startsWith('http') ? cssUrl : `${url}${cssUrl}`);
+            const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
+            const cssResponse = await fetch(fullCssUrl);
             const cssText = await cssResponse.text();
             const parsedCSS = css.parse(cssText);
 
