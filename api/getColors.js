@@ -3,7 +3,7 @@ import css from 'css';
 
 export default async function handler(req, res) {
     // Set CORS headers for all responses
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
+    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Adjust to your Webflow domain
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -72,6 +72,19 @@ export default async function handler(req, res) {
             return null;
         };
 
+        // Function to check if an element is visible
+        const isVisible = (element) => {
+            const style = window.getComputedStyle(element);
+            return style.display !== 'none' && style.visibility !== 'hidden';
+        };
+
+        // Function to resolve CSS variables in a color string
+        const resolveCssVariables = (color, variables) => {
+            return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
+                return variables[variableName] || match;
+            });
+        };
+
         // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
             const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
@@ -85,7 +98,6 @@ export default async function handler(req, res) {
                 if (rule.type === 'rule') {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property.startsWith('--')) {
-                            // Store variable definitions
                             variableDefinitions[declaration.property] = declaration.value;
                         }
                     });
@@ -111,14 +123,14 @@ export default async function handler(req, res) {
             });
         }
 
-        // Sort colors by luminance (lightest to darkest)
+        // Sort colors by luminance
         const sortedColors = Array.from(colorList).sort((a, b) => {
             const rgbA = getRgbFromColor(a);
             const rgbB = getRgbFromColor(b);
             if (!rgbA || !rgbB) return 0; // If color isn't in rgb, don't sort
             const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
             const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
-            return luminanceA - luminanceB; // Sort from lightest to darkest
+            return luminanceA - luminanceB;
         });
 
         // Respond with the sorted colors
@@ -129,12 +141,3 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
-
-// Function to resolve CSS variables in a color string
-const resolveCssVariables = (color, variables) => {
-    // Replace any CSS variable in the form of var(--variable-name)
-    return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
-        // If the variable is defined, replace it with its value, else leave it as is
-        return variables[variableName] || match;
-    });
-};
