@@ -3,7 +3,7 @@ import css from 'css';
 
 export default async function handler(req, res) {
     // Set CORS headers for all responses
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Adjust to your Webflow domain
+    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -68,21 +68,20 @@ export default async function handler(req, res) {
             if (rgba) {
                 return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
             }
-            // Handle hex colors or other formats if necessary
+            // Handle hex colors (hex to RGB conversion)
+            if (/^#([0-9A-F]{3}){1,2}$/i.test(color)) {
+                let hex = color.substring(1);
+                if (hex.length === 3) {
+                    hex = hex.split('').map(char => char + char).join('');
+                }
+                const rgb = parseInt(hex, 16);
+                return {
+                    r: (rgb >> 16) & 0xff,
+                    g: (rgb >>  8) & 0xff,
+                    b: (rgb >>  0) & 0xff
+                };
+            }
             return null;
-        };
-
-        // Function to check if an element is visible
-        const isVisible = (element) => {
-            const style = window.getComputedStyle(element);
-            return style.display !== 'none' && style.visibility !== 'hidden';
-        };
-
-        // Function to resolve CSS variables in a color string
-        const resolveCssVariables = (color, variables) => {
-            return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
-                return variables[variableName] || match;
-            });
         };
 
         // Fetch and parse each CSS file
@@ -123,14 +122,14 @@ export default async function handler(req, res) {
             });
         }
 
-        // Sort colors by luminance
+        // Sort colors by luminance (lightest to darkest)
         const sortedColors = Array.from(colorList).sort((a, b) => {
             const rgbA = getRgbFromColor(a);
             const rgbB = getRgbFromColor(b);
             if (!rgbA || !rgbB) return 0; // If color isn't in rgb, don't sort
             const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
             const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
-            return luminanceA - luminanceB;
+            return luminanceA - luminanceB; // Sort from lightest to darkest
         });
 
         // Respond with the sorted colors
@@ -141,3 +140,10 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
+
+// Function to resolve CSS variables in a color string
+const resolveCssVariables = (color, variables) => {
+    return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
+        return variables[variableName] || match;
+    });
+};
