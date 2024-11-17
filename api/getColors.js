@@ -61,12 +61,12 @@ export default async function handler(req, res) {
             const cssText = await cssResponse.text();
             const parsedCSS = css.parse(cssText);
 
-            // Extract variable definitions from the entire CSS
+            // Extract variable definitions
             parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.declarations) {
+                if (rule.type === 'rule') {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property.startsWith('--')) {
-                            // Store variable definitions, including fallback values
+                            // Store variable definitions
                             variableDefinitions[declaration.property] = declaration.value;
                         }
                     });
@@ -77,13 +77,13 @@ export default async function handler(req, res) {
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
-                        if (declaration.property === 'color' || declaration.property === 'background-color') {
+                        if (declaration.property === 'color' || declaration.property === 'background-color' || 
+                            declaration.property === 'border-color' || declaration.property === 'text-color') {  // Added 'border-color' and 'text-color'
                             let color = declaration.value;
 
-                            // Resolve any variables in the color value
+                            // Replace any variables in the color value
                             color = resolveCssVariables(color, variableDefinitions);
 
-                            // If color is valid, add it to the colorList
                             if (isValidColor(color)) {
                                 colorList.add(color);
                             }
@@ -104,11 +104,9 @@ export default async function handler(req, res) {
 
 // Function to resolve CSS variables in a color string
 const resolveCssVariables = (color, variables) => {
-    return color.replace(/var\((--[a-zA-Z0-9_-]+)(?:, *([^)]*))?\)/g, (match, variableName, fallback) => {
-        // Check if the variable is defined and has a fallback
-        const variableValue = variables[variableName];
-
-        // If the variable is found, return its value, otherwise use the fallback value or return the original variable reference
-        return variableValue ? variableValue : (fallback || match);
+    // Replace any CSS variable in the form of var(--variable-name)
+    return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
+        // If the variable is defined, replace it with its value, else leave it as is
+        return variables[variableName] || match;
     });
 };
