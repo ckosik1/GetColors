@@ -61,12 +61,12 @@ export default async function handler(req, res) {
             const cssText = await cssResponse.text();
             const parsedCSS = css.parse(cssText);
 
-            // Extract variable definitions
+            // Extract variable definitions from the entire CSS
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property.startsWith('--')) {
-                            // Store variable definitions
+                            // Store variable definitions, including fallback values
                             variableDefinitions[declaration.property] = declaration.value;
                         }
                     });
@@ -103,12 +103,11 @@ export default async function handler(req, res) {
 
 // Function to resolve CSS variables in a color string
 const resolveCssVariables = (color, variables) => {
-    return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
+    return color.replace(/var\((--[a-zA-Z0-9_-]+)(?:, *([^)]*))?\)/g, (match, variableName, fallback) => {
         // Check if the variable is defined and has a fallback
         const variableValue = variables[variableName];
-        if (variableValue) {
-            return variableValue; // If the variable is defined, use its value
-        }
-        return match; // If the variable is not defined, leave it as is
+
+        // If the variable is found, return its value, otherwise use the fallback value or return the original variable reference
+        return variableValue ? variableValue : (fallback || match);
     });
 };
