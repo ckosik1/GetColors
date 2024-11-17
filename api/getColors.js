@@ -45,13 +45,19 @@ export default async function handler(req, res) {
 
         // Function to check if a color is valid (not transparent, inherit, or low opacity)
         const isValidColor = (color) => {
-            if (color === 'transparent' || color === 'inherit') return false;
-            if (color.startsWith('rgba')) {
-                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
-                if (rgba && parseFloat(rgba[4]) < 0.99) return false;
-            }
-            return true;
-        };
+        if (color === 'transparent' || color === 'inherit') return false;
+        if (color.startsWith('rgba')) {
+        const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
+        if (rgba && parseFloat(rgba[4]) < 0.99) return false;
+    }
+
+    // Exclude typical user agent colors (common black/white)
+    const userAgentDefaults = ['rgb(0, 0, 0)', 'rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)', 'rgba(255, 255, 255, 0)'];
+    if (userAgentDefaults.includes(color)) return false;
+
+    return true;
+};
+
 
         // Function to calculate luminance of a color
         const luminance = (r, g, b) => {
