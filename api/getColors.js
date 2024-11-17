@@ -1,17 +1,10 @@
 import fetch from 'node-fetch';
 import css from 'css';
+import cors from './corsMiddleware'; // Import the custom CORS middleware
 
 export default async function handler(req, res) {
-    // Allow any origin for CORS (testing purposes; narrow down to specific domain later)
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    // Handle preflight (OPTIONS) request
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
-    }
+    // Apply CORS middleware
+    cors(req, res, () => {});
 
     // Only allow POST requests
     if (req.method !== 'POST') {
