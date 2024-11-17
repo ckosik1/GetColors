@@ -1,0 +1,10 @@
+{
+  "name": "get-colors",
+  "version": "1.0.0",
+  "description": "A Vercel function to fetch and extract colors from a website",
+  "main": "api/getColors.js",
+  "dependencies": {
+    "node-fetch": "^2.6.1",
+    "css": "^3.0.0"
+  }
+}
