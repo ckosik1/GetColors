@@ -2,48 +2,35 @@ import fetch from 'node-fetch';
 import css from 'css';
 
 export default async function handler(req, res) {
-    // Set CORS headers for all responses
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Adjust to your Webflow domain
+    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    console.log('Received request:', req.method);
-
-    // Handle preflight request (OPTIONS)
     if (req.method === 'OPTIONS') {
-        console.log('Handling OPTIONS request');
         res.status(200).end();
         return;
     }
 
-    // Only allow POST requests
     if (req.method !== 'POST') {
-        console.log('Method not allowed');
         res.status(405).json({ error: 'Method Not Allowed' });
         return;
     }
 
-    // Extract the URL from the request body
     const { url } = req.body;
     if (!url) {
-        console.log('No URL provided');
         res.status(400).json({ error: 'URL is required' });
         return;
     }
 
     try {
-        console.log('Fetching HTML from URL:', url);
         const response = await fetch(url);
         const html = await response.text();
 
-        // Extract CSS file links from the HTML
         const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
-        console.log('CSS links found:', cssLinks);
 
         let colorList = new Set();
         let variableDefinitions = {};
 
-        // Check if a color is valid (not transparent, inherit, or low opacity)
         const isValidColor = (color) => {
             if (color === 'transparent' || color === 'inherit') return false;
             if (color.startsWith('rgba')) {
@@ -53,41 +40,52 @@ export default async function handler(req, res) {
             return true;
         };
 
-        // Calculate luminance of a color
+        const hexToRgb = (hex) => {
+            let r = 0, g = 0, b = 0;
+            if (hex.length === 4) {
+                r = parseInt(hex[1] + hex[1], 16);
+                g = parseInt(hex[2] + hex[2], 16);
+                b = parseInt(hex[3] + hex[3], 16);
+            } else if (hex.length === 7) {
+                r = parseInt(hex[1] + hex[2], 16);
+                g = parseInt(hex[3] + hex[4], 16);
+                b = parseInt(hex[5] + hex[6], 16);
+            }
+            return { r, g, b };
+        };
+
+        const colorToRgb = (color) => {
+            if (color.startsWith('#')) {
+                return hexToRgb(color);
+            } else if (color.startsWith('rgb')) {
+                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
+                if (rgba) {
+                    return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
+                }
+            }
+            return null;
+        };
+
         const luminance = (r, g, b) => {
-            const a = [r, g, b].map(x => {
+            const a = [r, g, b].map((x) => {
                 x = x / 255;
                 return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
             });
             return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
         };
 
-        // Parse RGB from color string and calculate luminance
-        const getLuminanceFromColor = (color) => {
-            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
-            if (rgba) {
-                const r = parseInt(rgba[1]), g = parseInt(rgba[2]), b = parseInt(rgba[3]);
-                return luminance(r, g, b);
-            }
-            return null;
-        };
-
-        // Resolve CSS variables in a color string
         const resolveCssVariables = (color, variables) => {
             return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
                 return variables[variableName] || match;
             });
         };
 
-        // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
             const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
-            console.log('Fetching CSS from:', fullCssUrl);
             const cssResponse = await fetch(fullCssUrl);
             const cssText = await cssResponse.text();
             const parsedCSS = css.parse(cssText);
 
-            // Extract variable definitions
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.type === 'rule') {
                     rule.declarations.forEach(declaration => {
@@ -98,16 +96,11 @@ export default async function handler(req, res) {
                 }
             });
 
-            // Extract color properties from CSS rules
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            let color = declaration.value;
-
-                            // Replace variables in the color value
-                            color = resolveCssVariables(color, variableDefinitions);
-
+                            let color = resolveCssVariables(declaration.value, variableDefinitions);
                             if (isValidColor(color)) {
                                 colorList.add(color);
                             }
@@ -117,19 +110,18 @@ export default async function handler(req, res) {
             });
         }
 
-        // Sort colors by luminance from lightest to darkest
         const sortedColors = Array.from(colorList).sort((a, b) => {
-            const luminanceA = getLuminanceFromColor(a);
-            const luminanceB = getLuminanceFromColor(b);
-            if (luminanceA === null || luminanceB === null) return 0;
-            return luminanceA - luminanceB; // Sort lightest to darkest
+            const rgbA = colorToRgb(a);
+            const rgbB = colorToRgb(b);
+            if (!rgbA || !rgbB) return 0;
+
+            const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
+            const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
+            return luminanceA - luminanceB;
         });
 
-        // Respond with the sorted colors
-        console.log('Sorted colors:', sortedColors);
         res.status(200).json({ colors: sortedColors });
     } catch (error) {
-        console.error('Error processing the URL:', error);
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
