@@ -26,7 +26,9 @@ export default async function handler(req, res) {
         const response = await fetch(url);
         const html = await response.text();
 
+        // Extract CSS links and inline styles
         const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
+        const inlineStyles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]);
 
         let colorList = new Set();
         let variableDefinitions = {};
@@ -80,26 +82,13 @@ export default async function handler(req, res) {
             });
         };
 
-        for (const cssUrl of cssLinks) {
-            const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
-            const cssResponse = await fetch(fullCssUrl);
-            const cssText = await cssResponse.text();
-            const parsedCSS = css.parse(cssText);
-
+        const extractColors = (parsedCSS) => {
             parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.type === 'rule') {
-                    rule.declarations.forEach(declaration => {
+                if (rule.type === 'rule' || rule.type === 'media') {
+                    rule.declarations?.forEach(declaration => {
                         if (declaration.property.startsWith('--')) {
                             variableDefinitions[declaration.property] = declaration.value;
-                        }
-                    });
-                }
-            });
-
-            parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.declarations) {
-                    rule.declarations.forEach(declaration => {
-                        if (declaration.property === 'color' || declaration.property === 'background-color') {
+                        } else if (declaration.property === 'color' || declaration.property === 'background-color') {
                             let color = resolveCssVariables(declaration.value, variableDefinitions);
                             if (isValidColor(color)) {
                                 colorList.add(color);
@@ -108,6 +97,21 @@ export default async function handler(req, res) {
                     });
                 }
             });
+        };
+
+        // Fetch and parse each CSS file
+        for (const cssUrl of cssLinks) {
+            const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
+            const cssResponse = await fetch(fullCssUrl);
+            const cssText = await cssResponse.text();
+            const parsedCSS = css.parse(cssText);
+            extractColors(parsedCSS);
+        }
+
+        // Parse inline CSS in <style> tags
+        for (const inlineCss of inlineStyles) {
+            const parsedCSS = css.parse(inlineCss);
+            extractColors(parsedCSS);
         }
 
         const sortedColors = Array.from(colorList).sort((a, b) => {
