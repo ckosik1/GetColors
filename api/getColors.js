@@ -63,7 +63,7 @@ export default async function handler(req, res) {
 
             // Extract variable definitions
             parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.type === 'rule') {
+                if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property.startsWith('--')) {
                             // Store variable definitions
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
                         if (declaration.property === 'color' || declaration.property === 'background-color') {
                             let color = declaration.value;
 
-                            // Replace any variables in the color value
+                            // Resolve any variables in the color value
                             color = resolveCssVariables(color, variableDefinitions);
 
                             if (isValidColor(color)) {
@@ -103,9 +103,12 @@ export default async function handler(req, res) {
 
 // Function to resolve CSS variables in a color string
 const resolveCssVariables = (color, variables) => {
-    // Replace any CSS variable in the form of var(--variable-name)
     return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
-        // If the variable is defined, replace it with its value, else leave it as is
-        return variables[variableName] || match;
+        // Check if the variable is defined and has a fallback
+        const variableValue = variables[variableName];
+        if (variableValue) {
+            return variableValue; // If the variable is defined, use its value
+        }
+        return match; // If the variable is not defined, leave it as is
     });
 };
