@@ -64,12 +64,32 @@ export default async function handler(req, res) {
 
         // Convert color to RGB and calculate luminance
         const getRgbFromColor = (color) => {
-            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
+            // Handle rgba and rgb
+            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)(?:, ([0-9.]+))?\)/);
             if (rgba) {
-                return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
+                return {
+                    r: parseInt(rgba[1]),
+                    g: parseInt(rgba[2]),
+                    b: parseInt(rgba[3]),
+                };
             }
-            // Handle hex colors or other formats if necessary
-            return null;
+            
+            // Handle hex colors
+            const hex = color.match(/^#([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/);
+            if (hex) {
+                let hexValue = hex[1];
+                if (hexValue.length === 3) {
+                    hexValue = hexValue.split('').map(char => char + char).join('');
+                }
+                const rgb = parseInt(hexValue, 16);
+                return {
+                    r: (rgb >> 16) & 0xff,
+                    g: (rgb >>  8) & 0xff,
+                    b: (rgb >>  0) & 0xff,
+                };
+            }
+
+            return null; // Return null if no match
         };
 
         // Fetch and parse each CSS file
