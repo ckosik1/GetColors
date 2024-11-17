@@ -1,4 +1,4 @@
-// api/getColors.js
+// api/getColors.js //
 
 import fetch from 'node-fetch'; // Vercel's Node environment has this package built-in
 import css from 'css';
