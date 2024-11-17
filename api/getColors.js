@@ -53,6 +53,25 @@ export default async function handler(req, res) {
             return true;
         };
 
+        // Function to calculate luminance of a color
+        const luminance = (r, g, b) => {
+            const a = [r, g, b].map(function (x) {
+                x = x / 255;
+                return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+            });
+            return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+        };
+
+        // Convert color to RGB and calculate luminance
+        const getRgbFromColor = (color) => {
+            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
+            if (rgba) {
+                return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
+            }
+            // Handle hex colors or other formats if necessary
+            return null;
+        };
+
         // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
             const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
@@ -77,8 +96,7 @@ export default async function handler(req, res) {
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
-                        if (declaration.property === 'color' || declaration.property === 'background-color' || 
-                            declaration.property === 'border-color' || declaration.property === 'text-color') {  // Added 'border-color' and 'text-color'
+                        if (declaration.property === 'color' || declaration.property === 'background-color') {
                             let color = declaration.value;
 
                             // Replace any variables in the color value
@@ -93,9 +111,19 @@ export default async function handler(req, res) {
             });
         }
 
-        // Respond with the list of unique colors
-        console.log('Colors extracted:', Array.from(colorList));
-        res.status(200).json({ colors: Array.from(colorList) });
+        // Sort colors by luminance
+        const sortedColors = Array.from(colorList).sort((a, b) => {
+            const rgbA = getRgbFromColor(a);
+            const rgbB = getRgbFromColor(b);
+            if (!rgbA || !rgbB) return 0; // If color isn't in rgb, don't sort
+            const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
+            const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
+            return luminanceA - luminanceB;
+        });
+
+        // Respond with the sorted colors
+        console.log('Sorted colors:', sortedColors);
+        res.status(200).json({ colors: sortedColors });
     } catch (error) {
         console.error('Error processing the URL:', error);
         res.status(500).json({ error: 'An error occurred while processing the URL' });
