@@ -42,6 +42,16 @@ export default async function handler(req, res) {
 
         let colorList = new Set();
 
+        // Function to check if a color is valid (not transparent, inherit, or low opacity)
+        const isValidColor = (color) => {
+            if (color === 'transparent' || color === 'inherit') return false;
+            if (color.startsWith('rgba')) {
+                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
+                if (rgba && parseFloat(rgba[4]) < 0.99) return false;
+            }
+            return true;
+        };
+
         // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
             const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
@@ -55,7 +65,10 @@ export default async function handler(req, res) {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            colorList.add(declaration.value);
+                            const color = declaration.value;
+                            if (isValidColor(color)) {
+                                colorList.add(color);
+                            }
                         }
                     });
                 }
