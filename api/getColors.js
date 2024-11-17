@@ -41,6 +41,7 @@ export default async function handler(req, res) {
         console.log('CSS links found:', cssLinks);
 
         let colorList = new Set();
+        let variableDefinitions = {};
 
         // Function to check if a color is valid (not transparent, inherit, or low opacity)
         const isValidColor = (color) => {
@@ -60,12 +61,28 @@ export default async function handler(req, res) {
             const cssText = await cssResponse.text();
             const parsedCSS = css.parse(cssText);
 
+            // Extract variable definitions
+            parsedCSS.stylesheet.rules.forEach(rule => {
+                if (rule.type === 'rule') {
+                    rule.declarations.forEach(declaration => {
+                        if (declaration.property.startsWith('--')) {
+                            // Store variable definitions
+                            variableDefinitions[declaration.property] = declaration.value;
+                        }
+                    });
+                }
+            });
+
             // Extract color-related properties from CSS rules
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
                         if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            const color = declaration.value;
+                            let color = declaration.value;
+
+                            // Replace any variables in the color value
+                            color = resolveCssVariables(color, variableDefinitions);
+
                             if (isValidColor(color)) {
                                 colorList.add(color);
                             }
@@ -83,3 +100,12 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
+
+// Function to resolve CSS variables in a color string
+const resolveCssVariables = (color, variables) => {
+    // Replace any CSS variable in the form of var(--variable-name)
+    return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
+        // If the variable is defined, replace it with its value, else leave it as is
+        return variables[variableName] || match;
+    });
+};
