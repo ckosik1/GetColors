@@ -1,45 +1,65 @@
 // api/getColors.js
-
-import fetch from 'node-fetch'; // Vercel's Node environment has this package built-in
+import fetch from 'node-fetch';
 import css from 'css';
 
 export default async function handler(req, res) {
-    // Ensure the request is a POST and get the URL from the body
-    if (req.method !== 'POST') return res.status(405).end();
+    // CORS headers to allow requests from Webflow
+    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Replace with your Webflow domain
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle preflight (OPTIONS) request
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+    }
+
+    // Only allow POST requests
+    if (req.method !== 'POST') {
+        res.status(405).json({ error: 'Method Not Allowed' });
+        return;
+    }
+
+    // Extract the URL from the request body
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!url) {
+        res.status(400).json({ error: 'URL is required' });
+        return;
+    }
 
     try {
-        // Fetch HTML content from the URL
+        // Fetch the HTML content from the URL
         const response = await fetch(url);
         const html = await response.text();
 
-        // Parse CSS files
+        // Extract CSS file links from the HTML
         const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
 
-        let colorList = new Set(); // Use a Set to avoid duplicate colors
+        // Use a Set to avoid duplicate colors
+        let colorList = new Set();
 
+        // Fetch and parse each CSS file
         for (const cssUrl of cssLinks) {
             const cssResponse = await fetch(cssUrl.startsWith('http') ? cssUrl : `${url}${cssUrl}`);
             const cssText = await cssResponse.text();
-
-            // Parse CSS to find color properties
             const parsedCSS = css.parse(cssText);
+
+            // Extract color-related properties from CSS rules
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.declarations) {
                     rule.declarations.forEach(declaration => {
-                        if (['color', 'background-color', 'border-color'].includes(declaration.property)) {
-                            colorList.add(declaration.value); // Add each color to the set
+                        if (declaration.property === 'color' || declaration.property === 'background-color') {
+                            colorList.add(declaration.value);
                         }
                     });
                 }
             });
         }
 
-        // Convert Set to Array for JSON response
+        // Respond with the list of unique colors
         res.status(200).json({ colors: Array.from(colorList) });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to fetch or process CSS' });
+        console.error("Error processing the URL:", error);
+        res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
