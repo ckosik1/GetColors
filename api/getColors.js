@@ -39,12 +39,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Set CORS headers to allow requests from your Webflow site
-  res.setHeader('Access-Control-Allow-Origin', '*'); // In production, replace * with your Webflow domain
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
@@ -63,15 +62,33 @@ export default async function handler(
 
     const normalizedUrl = normalizeUrl(url);
 
+    // Enhanced headers to bypass some security restrictions
     const response = await fetch(normalizedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ColorExtractor/1.0)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      }
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      redirect: 'follow',
+      follow: 5, // Follow up to 5 redirects
+      timeout: 10000, // 10 second timeout
     });
 
     if (!response.ok) {
+      // If the site is protected by Cloudflare or similar service
+      if (response.status === 403 || response.status === 401) {
+        return res.status(400).json({
+          error: 'This website is protected and cannot be accessed directly',
+          message: 'Try a different website or contact the website administrator'
+        });
+      }
       throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
     }
 
@@ -97,25 +114,47 @@ export default async function handler(
       }
     });
 
-    // Fetch and process external stylesheets
+    // Modified CSS file fetching to handle protected resources
     const cssPromises = [];
     $('link[rel="stylesheet"]').each((_, element) => {
       const href = $(element).attr('href');
       if (href) {
-        const cssUrl = href.startsWith('http') ? href : new URL(href, normalizedUrl).toString();
-        cssPromises.push(
-          fetch(cssUrl)
-            .then(res => res.text())
-            .then(cssText => {
-              const extractedColors = extractColorsFromCSS(cssText);
-              extractedColors.forEach(color => colors.add(color));
+        try {
+          const cssUrl = href.startsWith('http') ? href : new URL(href, normalizedUrl).toString();
+          cssPromises.push(
+            fetch(cssUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/css,*/*;q=0.1',
+                'Accept-Language': 'en-US,en;q=0.9',
+              },
+              timeout: 5000
             })
-            .catch(error => console.error(`Failed to fetch CSS from ${cssUrl}:`, error))
-        );
+              .then(res => res.text())
+              .then(cssText => {
+                const extractedColors = extractColorsFromCSS(cssText);
+                extractedColors.forEach(color => colors.add(color));
+              })
+              .catch(error => {
+                console.warn(`Failed to fetch CSS from ${cssUrl}:`, error.message);
+                return null; // Continue with other CSS files
+              })
+          );
+        } catch (e) {
+          console.warn(`Invalid CSS URL: ${href}`);
+        }
       }
     });
 
-    await Promise.all(cssPromises);
+    // Wait for all CSS files to be processed or timeout
+    await Promise.allSettled(cssPromises);
+
+    if (colors.size === 0) {
+      return res.status(200).json({
+        colors: [],
+        message: 'No colors found or website is protected'
+      });
+    }
 
     return res.status(200).json({
       colors: Array.from(colors)
