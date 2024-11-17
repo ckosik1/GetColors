@@ -3,7 +3,7 @@ import css from 'css';
 
 export default async function handler(req, res) {
     // Set CORS headers for all responses
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io'); // Adjust to your Webflow domain
+    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -45,19 +45,13 @@ export default async function handler(req, res) {
 
         // Function to check if a color is valid (not transparent, inherit, or low opacity)
         const isValidColor = (color) => {
-        if (color === 'transparent' || color === 'inherit') return false;
-        if (color.startsWith('rgba')) {
-        const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
-        if (rgba && parseFloat(rgba[4]) < 0.99) return false;
-    }
-
-    // Exclude typical user agent colors (common black/white)
-    const userAgentDefaults = ['rgb(0, 0, 0)', 'rgb(255, 255, 255)', 'rgba(0, 0, 0, 0)', 'rgba(255, 255, 255, 0)'];
-    if (userAgentDefaults.includes(color)) return false;
-
-    return true;
-};
-
+            if (color === 'transparent' || color === 'inherit') return false;
+            if (color.startsWith('rgba')) {
+                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
+                if (rgba && parseFloat(rgba[4]) < 0.99) return false;
+            }
+            return true;
+        };
 
         // Function to calculate luminance of a color
         const luminance = (r, g, b) => {
@@ -70,32 +64,12 @@ export default async function handler(req, res) {
 
         // Convert color to RGB and calculate luminance
         const getRgbFromColor = (color) => {
-            // Handle rgba and rgb
-            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)(?:, ([0-9.]+))?\)/);
+            const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
             if (rgba) {
-                return {
-                    r: parseInt(rgba[1]),
-                    g: parseInt(rgba[2]),
-                    b: parseInt(rgba[3]),
-                };
+                return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
             }
-            
-            // Handle hex colors
-            const hex = color.match(/^#([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$/);
-            if (hex) {
-                let hexValue = hex[1];
-                if (hexValue.length === 3) {
-                    hexValue = hexValue.split('').map(char => char + char).join('');
-                }
-                const rgb = parseInt(hexValue, 16);
-                return {
-                    r: (rgb >> 16) & 0xff,
-                    g: (rgb >>  8) & 0xff,
-                    b: (rgb >>  0) & 0xff,
-                };
-            }
-
-            return null; // Return null if no match
+            // Handle hex colors or other formats if necessary
+            return null;
         };
 
         // Fetch and parse each CSS file
@@ -137,14 +111,14 @@ export default async function handler(req, res) {
             });
         }
 
-        // Sort colors by luminance
+        // Sort colors by luminance (lightest to darkest)
         const sortedColors = Array.from(colorList).sort((a, b) => {
             const rgbA = getRgbFromColor(a);
             const rgbB = getRgbFromColor(b);
             if (!rgbA || !rgbB) return 0; // If color isn't in rgb, don't sort
             const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
             const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
-            return luminanceA - luminanceB;
+            return luminanceA - luminanceB; // Sort from lightest to darkest
         });
 
         // Respond with the sorted colors
