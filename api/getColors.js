@@ -26,8 +26,7 @@ export default async function handler(req, res) {
         const response = await fetch(url);
         const html = await response.text();
 
-        // Extract CSS links, including those with query parameters
-        const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css(?:\?.*?)?)"/g)].map(match => match[1]);
+        const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
         const inlineStyles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]);
 
         let colorList = new Set();
@@ -49,21 +48,23 @@ export default async function handler(req, res) {
 
         const extractColors = (parsedCSS) => {
             parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.type === 'rule' && rule.selectors && rule.selectors.includes(':root')) {
-                    rule.declarations.forEach(declaration => {
-                        if (declaration.property.startsWith('--')) {
-                            variableDefinitions[declaration.property] = declaration.value;
-                        }
-                    });
-                } else if (rule.type === 'rule') {
-                    rule.declarations?.forEach(declaration => {
-                        if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            let color = resolveCssVariables(declaration.value, variableDefinitions);
-                            if (isValidColor(color)) {
-                                colorList.add(color);
+                if (rule.type === 'rule') {
+                    if (rule.selectors && rule.selectors.includes(':root')) {
+                        rule.declarations.forEach(declaration => {
+                            if (declaration.property.startsWith('--')) {
+                                variableDefinitions[declaration.property] = declaration.value;
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        rule.declarations?.forEach(declaration => {
+                            if (declaration.property === 'color' || declaration.property === 'background-color') {
+                                let color = resolveCssVariables(declaration.value, variableDefinitions);
+                                if (isValidColor(color)) {
+                                    colorList.add(color);
+                                }
+                            }
+                        });
+                    }
                 } else if (rule.type === 'media' || rule.type === 'supports') {
                     rule.rules.forEach(innerRule => {
                         innerRule.declarations?.forEach(declaration => {
