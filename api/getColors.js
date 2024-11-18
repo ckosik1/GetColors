@@ -2,11 +2,9 @@ import fetch from 'node-fetch';
 import css from 'css';
 import { AbortController } from 'node-abort-controller';
 
-// Cache for storing processed URLs
 const cache = new Map();
-const CACHE_DURATION = 3600000; // 1 hour in milliseconds
+const CACHE_DURATION = 3600000;
 
-// Utility function to validate URLs
 const isValidUrl = (string) => {
     try {
         new URL(string);
@@ -16,12 +14,10 @@ const isValidUrl = (string) => {
     }
 };
 
-// Fetch with timeout implementation
 const fetchWithTimeout = async (url, options = {}) => {
-    const timeout = 5000; // 5 seconds
+    const timeout = 5000;
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-    
     try {
         const response = await fetch(url, {
             ...options,
@@ -35,19 +31,27 @@ const fetchWithTimeout = async (url, options = {}) => {
     }
 };
 
+const rgbToHex = (rgb) => {
+    // Extract numbers from rgb string
+    const [r, g, b] = rgb.match(/\d+/g).map(Number);
+    // Convert to hex
+    const toHex = (n) => {
+        const hex = n.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
 export default async function handler(req, res) {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
     }
 
-    // Validate request method
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'Method Not Allowed' });
         return;
@@ -55,7 +59,6 @@ export default async function handler(req, res) {
 
     const { url } = req.body;
 
-    // Validate URL presence and format
     if (!url) {
         res.status(400).json({ error: 'URL is required' });
         return;
@@ -66,15 +69,13 @@ export default async function handler(req, res) {
         return;
     }
 
-    // Check cache
     if (cache.has(url)) {
         const cachedData = cache.get(url);
         if (Date.now() - cachedData.timestamp < CACHE_DURATION) {
             res.status(200).json(cachedData.data);
             return;
-        } else {
-            cache.delete(url);
         }
+        cache.delete(url);
     }
 
     try {
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
         const resolveCssVariables = (color, variables) => {
             let resolvedColor = color;
             let iterations = 0;
-            const maxIterations = 10; // Prevent infinite loops with circular references
+            const maxIterations = 10;
             
             while (resolvedColor.includes('var(') && iterations < maxIterations) {
                 resolvedColor = resolvedColor.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
@@ -102,25 +103,38 @@ export default async function handler(req, res) {
         };
 
         const isValidColor = (color) => {
-            return color && 
-                   color !== 'transparent' && 
-                   color !== 'inherit' && 
-                   color !== 'currentColor' &&
-                   !color.includes('url') &&
-                   !color.includes('gradient') &&
-                   (color.startsWith('#') || 
-                    color.startsWith('rgb') || 
-                    color.startsWith('hsl'));
-        };
-
-        // Helper functions to convert colors
-        const hexToRgb = (hex) => {
-            // Handle shorthand hex (#FFF)
-            if (hex.length === 4) {
-                hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+            if (!color) return false;
+            
+            const normalizedColor = color.toLowerCase().trim();
+            
+            // Skip these values
+            if (['transparent', 'inherit', 'currentcolor', 'initial', 'unset'].includes(normalizedColor)) {
+                return false;
             }
             
-            const bigint = parseInt(hex.slice(1), 16);
+            // Skip if contains invalid content
+            if (normalizedColor.includes('url') || 
+                normalizedColor.includes('gradient') || 
+                normalizedColor.includes('var(')) {
+                return false;
+            }
+            
+            // Must start with # or rgb
+            return normalizedColor.startsWith('#') || 
+                   normalizedColor.startsWith('rgb(') || 
+                   normalizedColor.startsWith('rgba(');
+        };
+
+        const hexToRgb = (hex) => {
+            // Remove # if present
+            hex = hex.replace('#', '');
+            
+            // Handle shorthand hex
+            if (hex.length === 3) {
+                hex = hex.split('').map(char => char + char).join('');
+            }
+            
+            const bigint = parseInt(hex, 16);
             const r = (bigint >> 16) & 255;
             const g = (bigint >> 8) & 255;
             const b = bigint & 255;
@@ -166,11 +180,13 @@ export default async function handler(req, res) {
                             });
                         } else {
                             rule.declarations?.forEach(declaration => {
-                                if (declaration.property === 'color' || 
-                                    declaration.property === 'background-color' || 
-                                    declaration.property === 'border-color') {
+                                if (['color', 'background-color', 'border-color'].includes(declaration.property)) {
                                     let color = resolveCssVariables(declaration.value, variableDefinitions);
                                     if (isValidColor(color)) {
+                                        // Convert RGB colors to HEX
+                                        if (color.startsWith('rgb')) {
+                                            color = rgbToHex(color);
+                                        }
                                         colorList.add(color);
                                     }
                                 }
@@ -196,10 +212,8 @@ export default async function handler(req, res) {
             }
         });
 
-        // Process all CSS files concurrently
         await Promise.all(cssPromises);
 
-        // Process inline styles
         for (const inlineCss of inlineStyles) {
             try {
                 const parsedCSS = css.parse(inlineCss);
@@ -222,19 +236,22 @@ export default async function handler(req, res) {
                     const [r, g, b] = color.match(/\d+/g).map(Number);
                     hsbValue = rgbToHsb(r, g, b);
                 } else {
-                    return null; // Skip invalid colors
+                    return null;
                 }
 
-                return { hex: color, rgb: rgbValue, hsb: hsbValue };
+                return {
+                    hex: color.startsWith('#') ? color : rgbToHex(color),
+                    rgb: rgbValue,
+                    hsb: hsbValue
+                };
             } catch (error) {
                 console.error('Error processing color:', color, error);
                 return null;
             }
-        }).filter(Boolean); // Remove null values
+        }).filter(Boolean);
 
         const result = { colors: colorsWithFormats };
         
-        // Cache the results
         cache.set(url, {
             timestamp: Date.now(),
             data: result
