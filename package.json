@@ -3,8 +3,20 @@
   "version": "1.0.0",
   "description": "A Vercel function to fetch and extract colors from a website",
   "main": "api/getColors.js",
+  "type": "module",
+  "engines": {
+    "node": ">=14.x"
+  },
+  "scripts": {
+    "start": "node api/getColors.js",
+    "dev": "vercel dev"
+  },
   "dependencies": {
-    "node-fetch": "^2.6.1",
-    "css": "^3.0.0"
+    "node-fetch": "^3.3.2",
+    "css": "^3.0.0",
+    "node-abort-controller": "^3.1.1"
+  },
+  "devDependencies": {
+    "vercel": "^32.3.0"
   }
 }
