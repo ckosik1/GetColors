@@ -48,16 +48,34 @@ export default async function handler(req, res) {
 
         const extractColors = (parsedCSS) => {
             parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.type === 'rule' || rule.type === 'media') {
-                    rule.declarations?.forEach(declaration => {
-                        if (declaration.property.startsWith('--')) {
-                            variableDefinitions[declaration.property] = declaration.value;
-                        } else if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            let color = resolveCssVariables(declaration.value, variableDefinitions);
-                            if (isValidColor(color)) {
-                                colorList.add(color);
+                if (rule.type === 'rule') {
+                    // Check if it's a :root rule for CSS variables
+                    if (rule.selectors && rule.selectors.includes(':root')) {
+                        rule.declarations.forEach(declaration => {
+                            if (declaration.property.startsWith('--')) {
+                                variableDefinitions[declaration.property] = declaration.value;
                             }
-                        }
+                        });
+                    } else {
+                        rule.declarations?.forEach(declaration => {
+                            if (declaration.property === 'color' || declaration.property === 'background-color') {
+                                let color = resolveCssVariables(declaration.value, variableDefinitions);
+                                if (isValidColor(color)) {
+                                    colorList.add(color);
+                                }
+                            }
+                        });
+                    }
+                } else if (rule.type === 'media') {
+                    rule.rules.forEach(innerRule => {
+                        innerRule.declarations?.forEach(declaration => {
+                            if (declaration.property === 'color' || declaration.property === 'background-color') {
+                                let color = resolveCssVariables(declaration.value, variableDefinitions);
+                                if (isValidColor(color)) {
+                                    colorList.add(color);
+                                }
+                            }
+                        });
                     });
                 }
             });
