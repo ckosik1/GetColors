@@ -97,11 +97,55 @@ export default async function handler(req, res) {
             extractColors(parsedCSS);
         }
 
-        const sortedColors = Array.from(colorList).sort();
+        // Convert the colors to an array with additional info (hex, RGB, HSB)
+        const colorData = Array.from(colorList).map(color => {
+            const rgb = hexToRgb(color);
+            const hsb = rgb ? rgbToHsb(rgb.r, rgb.g, rgb.b) : null;
+            return {
+                hex: color,
+                rgb: rgb ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` : null,
+                hsb: hsb ? `hsb(${hsb.h}, ${hsb.s}, ${hsb.b})` : null
+            };
+        });
 
-        res.status(200).json({ colors: sortedColors });
+        res.status(200).json({ colors: colorData });
     } catch (error) {
         console.error("Error processing the URL:", error);
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
+}
+
+// Helper function to convert hex to RGB
+function hexToRgb(hex) {
+    if (!/^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex)) return null;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return { r, g, b };
+}
+
+// Helper function to convert RGB to HSB
+function rgbToHsb(r, g, b) {
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const delta = max - min;
+    let h, s, bVal = max;
+
+    s = max === 0 ? 0 : delta / max;
+
+    if (max === min) {
+        h = 0;
+    } else {
+        switch (max) {
+            case r: h = (g - b) / delta + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / delta + 2; break;
+            case b: h = (r - g) / delta + 4; break;
+        }
+        h /= 6;
+    }
+
+    return {
+        h: Math.round(h * 360),
+        s: Math.round(s * 100),
+        b: Math.round((bVal / 255) * 100)
+    };
 }
