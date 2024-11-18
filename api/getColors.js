@@ -49,6 +49,7 @@ export default async function handler(req, res) {
         const extractColors = (parsedCSS) => {
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.type === 'rule') {
+                    // Check if it's a :root rule for CSS variables
                     if (rule.selectors && rule.selectors.includes(':root')) {
                         rule.declarations.forEach(declaration => {
                             if (declaration.property.startsWith('--')) {
@@ -65,7 +66,7 @@ export default async function handler(req, res) {
                             }
                         });
                     }
-                } else if (rule.type === 'media' || rule.type === 'supports') {
+                } else if (rule.type === 'media') {
                     rule.rules.forEach(innerRule => {
                         innerRule.declarations?.forEach(declaration => {
                             if (declaration.property === 'color' || declaration.property === 'background-color') {
@@ -88,7 +89,7 @@ export default async function handler(req, res) {
                 const parsedCSS = css.parse(cssText);
                 extractColors(parsedCSS);
             } catch (error) {
-                console.error(Failed to fetch CSS from ${fullCssUrl}:, error);
+                console.error(`Failed to fetch CSS from ${fullCssUrl}:`, error);
             }
         }
 
