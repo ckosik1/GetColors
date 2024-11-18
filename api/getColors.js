@@ -49,7 +49,6 @@ export default async function handler(req, res) {
         const extractColors = (parsedCSS) => {
             parsedCSS.stylesheet.rules.forEach(rule => {
                 if (rule.type === 'rule') {
-                    // Check if it's a :root rule for CSS variables
                     if (rule.selectors && rule.selectors.includes(':root')) {
                         rule.declarations.forEach(declaration => {
                             if (declaration.property.startsWith('--')) {
@@ -66,7 +65,7 @@ export default async function handler(req, res) {
                             }
                         });
                     }
-                } else if (rule.type === 'media') {
+                } else if (rule.type === 'media' || rule.type === 'supports') {
                     rule.rules.forEach(innerRule => {
                         innerRule.declarations?.forEach(declaration => {
                             if (declaration.property === 'color' || declaration.property === 'background-color') {
