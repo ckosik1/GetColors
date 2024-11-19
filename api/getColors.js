@@ -5,6 +5,117 @@ import { AbortController } from 'node-abort-controller';
 const cache = new Map();
 const CACHE_DURATION = 3600000;
 
+const ntc = {
+    init: function() {
+        var color, rgb, hsl;
+        for(var i = 0; i < ntc.names.length; i++) {
+            color = "#" + ntc.names[i][0];
+            rgb = ntc.rgb(color);
+            hsl = ntc.hsl(color);
+            ntc.names[i].push(rgb[0], rgb[1], rgb[2], hsl[0], hsl[1], hsl[2]);
+        }
+    },
+
+    name: function(color) {
+        color = color.toUpperCase();
+        if(color.length < 3 || color.length > 7)
+            return ["#000000", "Invalid Color: " + color, false];
+        if(color.length % 3 == 0)
+            color = "#" + color;
+        if(color.length == 4)
+            color = "#" + color.substr(1, 1) + color.substr(1, 1) + color.substr(2, 1) + color.substr(2, 1) + color.substr(3, 1) + color.substr(3, 1);
+
+        var rgb = ntc.rgb(color);
+        var r = rgb[0], g = rgb[1], b = rgb[2];
+        var hsl = ntc.hsl(color);
+        var h = hsl[0], s = hsl[1], l = hsl[2];
+        var ndf1 = 0; ndf2 = 0; ndf = 0;
+        var cl = -1, df = -1;
+
+        for(var i = 0; i < ntc.names.length; i++) {
+            if(color == "#" + ntc.names[i][0])
+                return ["#" + ntc.names[i][0], ntc.names[i][1], true];
+
+            ndf1 = Math.pow(r - ntc.names[i][2], 2) + Math.pow(g - ntc.names[i][3], 2) + Math.pow(b - ntc.names[i][4], 2);
+            ndf2 = Math.pow(h - ntc.names[i][5], 2) + Math.pow(s - ntc.names[i][6], 2) + Math.pow(l - ntc.names[i][7], 2);
+            ndf = ndf1 + ndf2 * 2;
+            if(df < 0 || df > ndf) {
+                df = ndf;
+                cl = i;
+            }
+        }
+
+        return (cl < 0 ? ["#000000", "Invalid Color: " + color, false] : ["#" + ntc.names[cl][0], ntc.names[cl][1], false]);
+    },
+
+    hsl: function (color) {
+        var rgb = [parseInt('0x' + color.substring(1, 3)) / 255, parseInt('0x' + color.substring(3, 5)) / 255, parseInt('0x' + color.substring(5, 7)) / 255];
+        var min, max, delta, h, s, l;
+        var r = rgb[0], g = rgb[1], b = rgb[2];
+
+        min = Math.min(r, Math.min(g, b));
+        max = Math.max(r, Math.max(g, b));
+        delta = max - min;
+        l = (min + max) / 2;
+
+        s = 0;
+        if(l > 0 && l < 1)
+            s = delta / (l < 0.5 ? (2 * l) : (2 - 2 * l));
+
+        h = 0;
+        if(delta > 0) {
+            if (max == r && max != g) h += (g - b) / delta;
+            if (max == g && max != b) h += (2 + (b - r) / delta);
+            if (max == b && max != r) h += (4 + (r - g) / delta);
+            h /= 6;
+        }
+        return [parseInt(h * 255), parseInt(s * 255), parseInt(l * 255)];
+    },
+
+    rgb: function(color) {
+        return [parseInt('0x' + color.substring(1, 3)), parseInt('0x' + color.substring(3, 5)), parseInt('0x' + color.substring(5, 7))];
+    },
+
+    names: [
+        ["000000", "Black"],
+        ["000080", "Navy Blue"],
+        ["0000C8", "Dark Blue"],
+        ["0000FF", "Blue"],
+        ["000741", "Stratos"],
+        ["001B1C", "Swamp"],
+        ["002387", "Resolution Blue"],
+        ["002900", "Deep Fir"],
+        ["002E20", "Burnham"],
+        ["002FA7", "International Klein Blue"],
+        ["003153", "Prussian Blue"],
+        ["003366", "Midnight Blue"],
+        ["003399", "Smalt"],
+        ["003532", "Deep Teal"],
+        ["003E40", "Cyprus"],
+        ["004620", "Kaitoke Green"],
+        ["0047AB", "Cobalt"],
+        ["4B0082", "Indigo"],
+        ["800000", "Maroon"],
+        ["800080", "Purple"],
+        ["808000", "Olive"],
+        ["808080", "Gray"],
+        ["C0C0C0", "Silver"],
+        ["FF0000", "Red"],
+        ["FF00FF", "Magenta"],
+        ["FF4500", "Orange Red"],
+        ["FF6347", "Tomato"],
+        ["FF69B4", "Hot Pink"],
+        ["FF8C00", "Dark Orange"],
+        ["FFA500", "Orange"],
+        ["FFD700", "Gold"],
+        ["FFFF00", "Yellow"],
+        ["FFFFFF", "White"]
+    ]
+};
+
+// Initialize ntc
+ntc.init();
+
 const isValidUrl = (string) => {
     try {
         new URL(string);
@@ -40,6 +151,49 @@ const rgbToHex = (rgb) => {
         return hex.length === 1 ? '0' + hex : hex;
     };
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const hexToRgb = (hex) => {
+    // Remove # if present
+    hex = hex.replace('#', '');
+    
+    // Handle shorthand hex
+    if (hex.length === 3) {
+        hex = hex.split('').map(char => char + char).join('');
+    }
+    
+    const bigint = parseInt(hex, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgb(${r}, ${g}, ${b})`;
+};
+
+const rgbToHsb = (r, g, b) => {
+    r = r / 255;
+    g = g / 255;
+    b = b / 255;
+    
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    
+    let h, s, v = max;
+
+    s = max === 0 ? 0 : delta / max;
+
+    if (max === min) {
+        h = 0;
+    } else {
+        switch (max) {
+            case r: h = (g - b) / delta + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / delta + 2; break;
+            case b: h = (r - g) / delta + 4; break;
+        }
+        h /= 6;
+    }
+
+    return `hsb(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(v * 100)}%)`;
 };
 
 export default async function handler(req, res) {
@@ -107,65 +261,19 @@ export default async function handler(req, res) {
             
             const normalizedColor = color.toLowerCase().trim();
             
-            // Skip these values
             if (['transparent', 'inherit', 'currentcolor', 'initial', 'unset'].includes(normalizedColor)) {
                 return false;
             }
             
-            // Skip if contains invalid content
             if (normalizedColor.includes('url') || 
                 normalizedColor.includes('gradient') || 
                 normalizedColor.includes('var(')) {
                 return false;
             }
             
-            // Must start with # or rgb
             return normalizedColor.startsWith('#') || 
                    normalizedColor.startsWith('rgb(') || 
                    normalizedColor.startsWith('rgba(');
-        };
-
-        const hexToRgb = (hex) => {
-            // Remove # if present
-            hex = hex.replace('#', '');
-            
-            // Handle shorthand hex
-            if (hex.length === 3) {
-                hex = hex.split('').map(char => char + char).join('');
-            }
-            
-            const bigint = parseInt(hex, 16);
-            const r = (bigint >> 16) & 255;
-            const g = (bigint >> 8) & 255;
-            const b = bigint & 255;
-            return `rgb(${r}, ${g}, ${b})`;
-        };
-
-        const rgbToHsb = (r, g, b) => {
-            r = r / 255;
-            g = g / 255;
-            b = b / 255;
-            
-            const max = Math.max(r, g, b);
-            const min = Math.min(r, g, b);
-            const delta = max - min;
-            
-            let h, s, v = max;
-
-            s = max === 0 ? 0 : delta / max;
-
-            if (max === min) {
-                h = 0;
-            } else {
-                switch (max) {
-                    case r: h = (g - b) / delta + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / delta + 2; break;
-                    case b: h = (r - g) / delta + 4; break;
-                }
-                h /= 6;
-            }
-
-            return `hsb(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(v * 100)}%)`;
         };
 
         const extractColors = (parsedCSS) => {
@@ -183,7 +291,6 @@ export default async function handler(req, res) {
                                 if (['color', 'background-color', 'border-color'].includes(declaration.property)) {
                                     let color = resolveCssVariables(declaration.value, variableDefinitions);
                                     if (isValidColor(color)) {
-                                        // Convert RGB colors to HEX
                                         if (color.startsWith('rgb')) {
                                             color = rgbToHex(color);
                                         }
@@ -199,7 +306,6 @@ export default async function handler(req, res) {
             }
         };
 
-        // Process external CSS files
         const cssPromises = cssLinks.map(async cssUrl => {
             const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
             try {
@@ -235,14 +341,19 @@ export default async function handler(req, res) {
                     rgbValue = color;
                     const [r, g, b] = color.match(/\d+/g).map(Number);
                     hsbValue = rgbToHsb(r, g, b);
+                    color = rgbToHex(color);
                 } else {
                     return null;
                 }
 
+                // Get the color name using ntc
+                const colorName = ntc.name(color)[1];
+
                 return {
                     hex: color.startsWith('#') ? color : rgbToHex(color),
                     rgb: rgbValue,
-                    hsb: hsbValue
+                    hsb: hsbValue,
+                    name: colorName
                 };
             } catch (error) {
                 console.error('Error processing color:', color, error);
@@ -266,7 +377,6 @@ export default async function handler(req, res) {
         });
     }
 }
-
 
 /*
 import fetch from 'node-fetch';
