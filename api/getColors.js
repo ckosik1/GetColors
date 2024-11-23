@@ -1,10 +1,17 @@
 import fetch from 'node-fetch';
 import css from 'css';
+import { parse as parseColor } from 'color-parse';
 
 export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // CORS headers
+    const allowedOrigins = ['https://alterkit.webflow.io', 'http://localhost:3000'];
+    const origin = req.headers.origin;
+    
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
 
     if (req.method === 'OPTIONS') {
         res.status(200).end();
@@ -23,111 +30,179 @@ export default async function handler(req, res) {
     }
 
     try {
-        const response = await fetch(url);
-        const html = await response.text();
-
-        // Extract CSS links and inline styles
-        const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
-        const inlineStyles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]);
-
-        let colorList = new Set();
-        let variableDefinitions = {};
-
-        const isValidColor = (color) => {
-            if (color === 'transparent' || color === 'inherit') return false;
-            if (color.startsWith('rgba')) {
-                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+), (\d?\.?\d+)\)/);
-                if (rgba && parseFloat(rgba[4]) < 0.99) return false;
-            }
-            return true;
-        };
-
-        const hexToRgb = (hex) => {
-            let r = 0, g = 0, b = 0;
-            if (hex.length === 4) {
-                r = parseInt(hex[1] + hex[1], 16);
-                g = parseInt(hex[2] + hex[2], 16);
-                b = parseInt(hex[3] + hex[3], 16);
-            } else if (hex.length === 7) {
-                r = parseInt(hex[1] + hex[2], 16);
-                g = parseInt(hex[3] + hex[4], 16);
-                b = parseInt(hex[5] + hex[6], 16);
-            }
-            return { r, g, b };
-        };
-
-        const colorToRgb = (color) => {
-            if (color.startsWith('#')) {
-                return hexToRgb(color);
-            } else if (color.startsWith('rgb')) {
-                const rgba = color.match(/rgba?\((\d+), (\d+), (\d+)/);
-                if (rgba) {
-                    return { r: parseInt(rgba[1]), g: parseInt(rgba[2]), b: parseInt(rgba[3]) };
-                }
-            }
-            return null;
-        };
-
-        const luminance = (r, g, b) => {
-            const a = [r, g, b].map((x) => {
-                x = x / 255;
-                return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-            });
-            return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-        };
-
-        const resolveCssVariables = (color, variables) => {
-            return color.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
-                return variables[variableName] || match;
-            });
-        };
-
-        const extractColors = (parsedCSS) => {
-            parsedCSS.stylesheet.rules.forEach(rule => {
-                if (rule.type === 'rule' || rule.type === 'media') {
-                    rule.declarations?.forEach(declaration => {
-                        if (declaration.property.startsWith('--')) {
-                            variableDefinitions[declaration.property] = declaration.value;
-                        } else if (declaration.property === 'color' || declaration.property === 'background-color') {
-                            let color = resolveCssVariables(declaration.value, variableDefinitions);
-                            if (isValidColor(color)) {
-                                colorList.add(color);
-                            }
-                        }
-                    });
-                }
-            });
-        };
-
-        // Fetch and parse each CSS file
-        for (const cssUrl of cssLinks) {
-            const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
-            const cssResponse = await fetch(fullCssUrl);
-            const cssText = await cssResponse.text();
-            const parsedCSS = css.parse(cssText);
-            extractColors(parsedCSS);
-        }
-
-        // Parse inline CSS in <style> tags
-        for (const inlineCss of inlineStyles) {
-            const parsedCSS = css.parse(inlineCss);
-            extractColors(parsedCSS);
-        }
-
-        const sortedColors = Array.from(colorList).sort((a, b) => {
-            const rgbA = colorToRgb(a);
-            const rgbB = colorToRgb(b);
-            if (!rgbA || !rgbB) return 0;
-
-            const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
-            const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
-            return luminanceA - luminanceB;
-        });
-
-        res.status(200).json({ colors: sortedColors });
+        const colors = await extractColorsFromUrl(url);
+        res.status(200).json({ colors });
     } catch (error) {
+        console.error('Error:', error);
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
+}
+
+async function extractColorsFromUrl(url) {
+    const response = await fetch(url);
+    const html = await response.text();
+    
+    // Extract all CSS sources
+    const cssLinks = [...html.matchAll(/<link[^>]*?href="([^"]*?\.css)[^"]*"/g)]
+        .map(match => match[1]);
+    const inlineStyles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
+        .map(match => match[1]);
+    
+    const colors = new Map(); // Using Map to store color info objects
+    const cssVariables = new Map();
+
+    // Process inline styles first
+    for (const inlineStyle of inlineStyles) {
+        try {
+            const parsedCSS = css.parse(inlineStyle);
+            extractColorsFromRules(parsedCSS.stylesheet.rules, colors, cssVariables, url);
+        } catch (error) {
+            console.error('Error parsing inline CSS:', error);
+        }
+    }
+
+    // Process external stylesheets
+    for (const cssLink of cssLinks) {
+        try {
+            const fullUrl = new URL(cssLink, url).href;
+            const cssResponse = await fetch(fullUrl);
+            const cssText = await cssResponse.text();
+            const parsedCSS = css.parse(cssText);
+            extractColorsFromRules(parsedCSS.stylesheet.rules, colors, cssVariables, url);
+        } catch (error) {
+            console.error(`Error processing CSS file ${cssLink}:`, error);
+        }
+    }
+
+    // Convert colors to array and sort by luminance
+    return Array.from(colors.values())
+        .sort((a, b) => b.luminance - a.luminance)
+        .map(colorInfo => ({
+            hex: colorInfo.hex,
+            rgb: colorInfo.rgb,
+            hsb: colorInfo.hsb
+        }));
+}
+
+function extractColorsFromRules(rules, colors, cssVariables, baseUrl) {
+    for (const rule of rules) {
+        if (rule.type === 'comment') continue;
+
+        if (rule.type === 'rule' && rule.declarations) {
+            for (const declaration of rule.declarations) {
+                if (!declaration.value) continue;
+
+                // Store CSS variables
+                if (declaration.property?.startsWith('--')) {
+                    cssVariables.set(declaration.property, declaration.value);
+                    continue;
+                }
+
+                // Only process color-related properties
+                if (!isColorProperty(declaration.property)) continue;
+
+                const value = resolveVariables(declaration.value, cssVariables);
+                const colorInfo = parseColorValue(value);
+                
+                if (colorInfo) {
+                    colors.set(colorInfo.hex, colorInfo);
+                }
+            }
+        }
+
+        // Handle nested rules (media queries, keyframes, etc.)
+        if (rule.rules) {
+            extractColorsFromRules(rule.rules, colors, cssVariables, baseUrl);
+        }
+    }
+}
+
+function isColorProperty(property) {
+    return /color$|^background(-color)?$|^border(-\w+)*-color$|^outline-color$/.test(property);
+}
+
+function resolveVariables(value, variables) {
+    return value.replace(/var\((--[^,)]+)(,[^)]+)?\)/g, (_, name) => {
+        return variables.get(name) || '';
+    });
+}
+
+function parseColorValue(value) {
+    try {
+        // Skip invalid or transparent colors
+        if (!value || value === 'transparent' || value === 'inherit' || 
+            value === 'currentColor' || value === 'initial') {
+            return null;
+        }
+
+        const parsed = parseColor(value);
+        
+        // Skip if invalid or transparent
+        if (!parsed || !parsed.values || parsed.alpha < 0.99) {
+            return null;
+        }
+
+        // Convert to different formats
+        const [r, g, b] = parsed.values;
+        const hex = rgbToHex(r, g, b);
+        const hsb = rgbToHsb(r, g, b);
+        const luminance = calculateLuminance(r, g, b);
+
+        return {
+            hex,
+            rgb: `rgb(${r}, ${g}, ${b})`,
+            hsb: `hsb(${hsb.h}°, ${hsb.s}%, ${hsb.b}%)`,
+            luminance
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function rgbToHex(r, g, b) {
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+function rgbToHsb(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+
+    let h = 0;
+    let s = max === 0 ? 0 : delta / max;
+    let v = max;
+
+    if (delta !== 0) {
+        if (max === r) {
+            h = ((g - b) / delta) % 6;
+        } else if (max === g) {
+            h = (b - r) / delta + 2;
+        } else {
+            h = (r - g) / delta + 4;
+        }
+
+        h = Math.round(h * 60);
+        if (h < 0) h += 360;
+    }
+
+    return {
+        h: Math.round(h),
+        s: Math.round(s * 100),
+        b: Math.round(v * 100)
+    };
+}
+
+function calculateLuminance(r, g, b) {
+    const [rs, gs, bs] = [r, g, b].map(c => {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
 
