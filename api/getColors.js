@@ -1,13 +1,10 @@
 import fetch from 'node-fetch';
 import css from 'css';
 import { AbortController } from 'node-abort-controller';
-import ntc from './ntc'; // Import the ntc object from ntc.js
 
-// Cache for storing processed URLs
 const cache = new Map();
-const CACHE_DURATION = 3600000; // 1 hour in milliseconds
+const CACHE_DURATION = 3600000;
 
-// Utility function to validate URLs
 const isValidUrl = (string) => {
     try {
         new URL(string);
@@ -17,12 +14,10 @@ const isValidUrl = (string) => {
     }
 };
 
-// Fetch with timeout implementation
 const fetchWithTimeout = async (url, options = {}) => {
-    const timeout = 5000; // 5 seconds
+    const timeout = 5000;
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-    
     try {
         const response = await fetch(url, {
             ...options,
@@ -36,19 +31,27 @@ const fetchWithTimeout = async (url, options = {}) => {
     }
 };
 
+const rgbToHex = (rgb) => {
+    // Extract numbers from rgb string
+    const [r, g, b] = rgb.match(/\d+/g).map(Number);
+    // Convert to hex
+    const toHex = (n) => {
+        const hex = n.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    return #${toHex(r)}${toHex(g)}${toHex(b)};
+};
+
 export default async function handler(req, res) {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
     }
 
-    // Validate request method
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'Method Not Allowed' });
         return;
@@ -56,7 +59,6 @@ export default async function handler(req, res) {
 
     const { url } = req.body;
 
-    // Validate URL presence and format
     if (!url) {
         res.status(400).json({ error: 'URL is required' });
         return;
@@ -67,15 +69,13 @@ export default async function handler(req, res) {
         return;
     }
 
-    // Check cache
     if (cache.has(url)) {
         const cachedData = cache.get(url);
         if (Date.now() - cachedData.timestamp < CACHE_DURATION) {
             res.status(200).json(cachedData.data);
             return;
-        } else {
-            cache.delete(url);
         }
+        cache.delete(url);
     }
 
     try {
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
         const resolveCssVariables = (color, variables) => {
             let resolvedColor = color;
             let iterations = 0;
-            const maxIterations = 10; // Prevent infinite loops with circular references
+            const maxIterations = 10;
             
             while (resolvedColor.includes('var(') && iterations < maxIterations) {
                 resolvedColor = resolvedColor.replace(/var\((--[a-zA-Z0-9_-]+)\)/g, (match, variableName) => {
@@ -103,94 +103,126 @@ export default async function handler(req, res) {
         };
 
         const isValidColor = (color) => {
-            return color && 
-                   color !== 'transparent' && 
-                   color !== 'inherit' && 
-                   color !== 'currentColor' &&
-                   !color.includes('url') &&
-                   !color.includes('gradient') &&
-                   (color.startsWith('#') || 
-                    color.startsWith('rgb') || 
-                    color.startsWith('hsl'));
-        };
-
-        // Helper functions to convert colors
-        const hexToRgb = (hex) => {
-            // Handle shorthand hex (#FFF)
-            if (hex.length === 4) {
-                hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+            if (!color) return false;
+            
+            const normalizedColor = color.toLowerCase().trim();
+            
+            // Skip these values
+            if (['transparent', 'inherit', 'currentcolor', 'initial', 'unset'].includes(normalizedColor)) {
+                return false;
             }
             
-            const bigint = parseInt(hex.slice(1), 16);
+            // Skip if contains invalid content
+            if (normalizedColor.includes('url') || 
+                normalizedColor.includes('gradient') || 
+                normalizedColor.includes('var(')) {
+                return false;
+            }
+            
+            // Must start with # or rgb
+            return normalizedColor.startsWith('#') || 
+                   normalizedColor.startsWith('rgb(') || 
+                   normalizedColor.startsWith('rgba(');
+        };
+
+        const hexToRgb = (hex) => {
+            // Remove # if present
+            hex = hex.replace('#', '');
+            
+            // Handle shorthand hex
+            if (hex.length === 3) {
+                hex = hex.split('').map(char => char + char).join('');
+            }
+            
+            const bigint = parseInt(hex, 16);
             const r = (bigint >> 16) & 255;
             const g = (bigint >> 8) & 255;
             const b = bigint & 255;
-            return `rgb(${r}, ${g}, ${b})`;
+            return rgb(${r}, ${g}, ${b});
         };
 
         const rgbToHsb = (r, g, b) => {
             r = r / 255;
             g = g / 255;
             b = b / 255;
+            
             const max = Math.max(r, g, b);
             const min = Math.min(r, g, b);
+            const delta = max - min;
+            
             let h, s, v = max;
 
-            const d = max - min;
-            s = max === 0 ? 0 : d / max;
+            s = max === 0 ? 0 : delta / max;
 
             if (max === min) {
-                h = 0; // achromatic
+                h = 0;
             } else {
                 switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
+                    case r: h = (g - b) / delta + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / delta + 2; break;
+                    case b: h = (r - g) / delta + 4; break;
                 }
                 h /= 6;
             }
 
-            return [Math.round(h * 360), Math.round(s * 100), Math.round(v * 100)];
+            return hsb(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(v * 100)}%);
         };
 
-        // Process CSS files
-        for (const cssLink of cssLinks) {
-            const cssResponse = await fetchWithTimeout(cssLink);
-            const cssText = await cssResponse.text();
-            const parsedCss = css.parse(cssText);
-
-            parsedCss.stylesheet.rules.forEach(rule => {
-                if (rule.declarations) {
-                    rule.declarations.forEach(declaration => {
-                        if (declaration.property && declaration.value) {
-                            const color = resolveCssVariables(declaration.value, variableDefinitions);
-                            if (isValidColor(color)) {
-                                colorList.add(color);
-                            }
+        const extractColors = (parsedCSS) => {
+            try {
+                parsedCSS.stylesheet.rules.forEach(rule => {
+                    if (rule.type === 'rule') {
+                        if (rule.selectors && rule.selectors.includes(':root')) {
+                            rule.declarations?.forEach(declaration => {
+                                if (declaration.property?.startsWith('--')) {
+                                    variableDefinitions[declaration.property] = declaration.value;
+                                }
+                            });
+                        } else {
+                            rule.declarations?.forEach(declaration => {
+                                if (['color', 'background-color', 'border-color'].includes(declaration.property)) {
+                                    let color = resolveCssVariables(declaration.value, variableDefinitions);
+                                    if (isValidColor(color)) {
+                                        // Convert RGB colors to HEX
+                                        if (color.startsWith('rgb')) {
+                                            color = rgbToHex(color);
+                                        }
+                                        colorList.add(color);
+                                    }
+                                }
+                            });
                         }
-                    });
-                }
-            });
-        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error parsing CSS rules:', error);
+            }
+        };
 
-        // Process inline styles
-        inlineStyles.forEach(style => {
-            const parsedCss = css.parse(style);
-            parsedCss.stylesheet.rules.forEach(rule => {
-                if (rule.declarations) {
-                    rule.declarations.forEach(declaration => {
-                        if (declaration.property && declaration.value) {
-                            const color = resolveCssVariables(declaration.value, variableDefinitions);
-                            if (isValidColor(color)) {
-                                colorList.add(color);
-                            }
-                        }
-                    });
-                }
-            });
+        // Process external CSS files
+        const cssPromises = cssLinks.map(async cssUrl => {
+            const fullCssUrl = cssUrl.startsWith('http') ? cssUrl : new URL(cssUrl, url).href;
+            try {
+                const cssResponse = await fetchWithTimeout(fullCssUrl);
+                const cssText = await cssResponse.text();
+                const parsedCSS = css.parse(cssText);
+                extractColors(parsedCSS);
+            } catch (error) {
+                console.error(Failed to fetch CSS from ${fullCssUrl}:, error);
+            }
         });
 
-        // Convert color list to an array and map to include names
+        await Promise.all(cssPromises);
+
+        for (const inlineCss of inlineStyles) {
+            try {
+                const parsedCSS = css.parse(inlineCss);
+                extractColors(parsedCSS);
+            } catch (error) {
+                console.error('Failed to parse inline CSS:', error);
+            }
+        }
+
         const colorsWithFormats = Array.from(colorList).map(color => {
             try {
                 let rgbValue, hsbValue;
@@ -203,19 +235,14 @@ export default async function handler(req, res) {
                     rgbValue = color;
                     const [r, g, b] = color.match(/\d+/g).map(Number);
                     hsbValue = rgbToHsb(r, g, b);
-                    color = hexToRgb(rgbValue); // Convert to hex for color naming
                 } else {
                     return null;
                 }
 
-                // Get the color name using ntc
-                const colorName = ntc.name(color)[1];
-
                 return {
-                    hex: color.startsWith('#') ? color : hexToRgb(color),
+                    hex: color.startsWith('#') ? color : rgbToHex(color),
                     rgb: rgbValue,
-                    hsb: hsbValue,
-                    name: colorName // Add the color name to the response
+                    hsb: hsbValue
                 };
             } catch (error) {
                 console.error('Error processing color:', color, error);
@@ -223,14 +250,20 @@ export default async function handler(req, res) {
             }
         }).filter(Boolean);
 
-        // Cache the result
-        cache.set(url, { timestamp: Date.now(), data: colorsWithFormats });
+        const result = { colors: colorsWithFormats };
+        
+        cache.set(url, {
+            timestamp: Date.now(),
+            data: result
+        });
 
-        // Send response
-        res.status(200).json(colorsWithFormats);
+        res.status(200).json(result);
     } catch (error) {
-        console.error('Error fetching or processing URL:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
+        console.error("Error processing the URL:", error);
+        res.status(500).json({ 
+            error: 'An error occurred while processing the URL',
+            message: error.message 
+        });
     }
 }
 
