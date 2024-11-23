@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 import css from 'css';
-import { JSDOM } from 'jsdom'; // Use jsdom to parse inline SVG and JS-based colors
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', 'https://alterkit.webflow.io');
@@ -27,8 +26,10 @@ export default async function handler(req, res) {
         const response = await fetch(url);
         const html = await response.text();
 
+        // Extract CSS links and inline styles
         const cssLinks = [...html.matchAll(/<link.*?href="(.*?\.css)"/g)].map(match => match[1]);
         const inlineStyles = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]);
+
         let colorList = new Set();
         let variableDefinitions = {};
 
@@ -113,21 +114,11 @@ export default async function handler(req, res) {
             extractColors(parsedCSS);
         }
 
-        // Process inline SVG and styles using JSDOM
-        const dom = new JSDOM(html);
-        const svgElements = dom.window.document.querySelectorAll('svg *');
-        svgElements.forEach((el) => {
-            const fillColor = el.getAttribute('fill');
-            const strokeColor = el.getAttribute('stroke');
-            if (fillColor && isValidColor(fillColor)) colorList.add(fillColor);
-            if (strokeColor && isValidColor(strokeColor)) colorList.add(strokeColor);
-        });
-
-        // Sort colors by luminance
         const sortedColors = Array.from(colorList).sort((a, b) => {
             const rgbA = colorToRgb(a);
             const rgbB = colorToRgb(b);
             if (!rgbA || !rgbB) return 0;
+
             const luminanceA = luminance(rgbA.r, rgbA.g, rgbA.b);
             const luminanceB = luminance(rgbB.r, rgbB.g, rgbB.b);
             return luminanceA - luminanceB;
@@ -138,6 +129,7 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'An error occurred while processing the URL' });
     }
 }
+
 
 
 /*
