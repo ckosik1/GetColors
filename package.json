@@ -9,14 +9,29 @@
   },
   "scripts": {
     "start": "node api/getColors.js",
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "deploy": "vercel deploy --prod"
   },
   "dependencies": {
     "node-fetch": "^3.3.2",
     "css": "^3.0.0",
-    "node-abort-controller": "^3.1.1"
+    "node-abort-controller": "^3.1.1",
+    "color-parse": "^1.4.2"
   },
   "devDependencies": {
     "vercel": "^32.3.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/get-colors.git"
+  },
+  "keywords": [
+    "color",
+    "extractor",
+    "web",
+    "api",
+    "vercel"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }
